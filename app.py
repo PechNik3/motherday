@@ -116,4 +116,4 @@ def memories(email):
 
 if __name__ == '__main__':
     initialize_database()  # Инициализация базы данных
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000)
