@@ -3,30 +3,29 @@ from flask_sqlalchemy import SQLAlchemy
 import datetime
 import random
 from flask_migrate import Migrate
+import os
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///compliments.db'
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Отключение кэширования
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
 
-# Модель пользователя
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(100), unique=True, nullable=False)
     last_compliment_date = db.Column(db.Date, nullable=True)
     compliments_used = db.Column(db.Text, default="")
-    last_image_used = db.Column(db.String(200), nullable=True)  # Добавляем поле для пути изображения
+    last_image_used = db.Column(db.String(200), nullable=True)
 
 
-# Модель комплиментов
 class Compliment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     text = db.Column(db.String(200), nullable=False)
 
 
 def initialize_database():
-    """Создание таблиц и добавление данных в базу."""
     with app.app_context():
         db.create_all()
         compliments = [
@@ -42,8 +41,6 @@ def initialize_database():
             "Ты — волшебница, делающая мир лучше.",
             "С Днем Матери! Ты — волшебница, которая делает этот мир лучше!"
         ]
-
-        # Добавляем только недостающие комплименты
         existing_texts = {c.text for c in Compliment.query.all()}
         for c in compliments:
             if c not in existing_texts:
@@ -51,7 +48,6 @@ def initialize_database():
         db.session.commit()
 
 
-# Главная страница
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
@@ -64,18 +60,26 @@ def index():
     return render_template('index.html')
 
 
-# Страница с комплиментами
 @app.route('/card/<email>')
 def card(email):
     user = User.query.filter_by(email=email).first()
     today = datetime.date.today()
 
-    # Особый комплимент для Дня Матери
+    if not user:
+        return redirect(url_for('index'))
+
+    print("Today's date:", today)
+    print("User's last compliment date:", user.last_compliment_date)
+    print("User's compliments used:", user.compliments_used)
+    print("User's last image used:", user.last_image_used)
+
     if today == datetime.date(2024, 11, 24):
         special_compliment = Compliment.query.filter_by(
             text="С Днем Матери! Ты — волшебница, которая делает этот мир лучше!").first()
         compliment = special_compliment.text
-        image_path = "default_image.jpg"  # Задайте путь к картинке для Дня Матери
+        image_path = "special_image.jpg"
+        user.last_image_used = image_path
+        db.session.commit()
     else:
         if user.last_compliment_date == today and user.compliments_used:
             last_compliment_id = int(user.compliments_used.split(",")[-1])
@@ -93,20 +97,18 @@ def card(email):
             user.compliments_used = ",".join(map(str, used_ids))
             compliment = compliment_obj.text
 
-            # Выбор случайного изображения
             image_path = random.choice(["image1.jpg", "image2.jpg", "image3.jpg"])
             user.last_image_used = image_path
             db.session.commit()
 
-    # Убедиться, что `last_image_used` имеет значение
     if not user.last_image_used:
-        user.last_image_used = "default_image.jpg"  # Установите путь к изображению по умолчанию
+        user.last_image_used = "default_image.jpg"
         db.session.commit()
 
+    print("Images in static/images:", os.listdir('static/images'))
     return render_template('card.html', compliment=compliment, user=user, today=today)
 
 
-# Воспоминания
 @app.route('/memories/<email>', methods=['GET', 'POST'])
 def memories(email):
     if request.method == 'POST':
@@ -115,5 +117,5 @@ def memories(email):
 
 
 if __name__ == '__main__':
-    initialize_database()  # Инициализация базы данных
+    initialize_database()
     app.run(host='0.0.0.0', port=5000)
